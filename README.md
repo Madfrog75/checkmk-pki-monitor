@@ -22,7 +22,8 @@ A Checkmk plugin for monitoring Microsoft Active Directory Certificate Services 
 ## Requirements
 
 ### Checkmk Server
-- Checkmk version 2.3.0 or later
+- Checkmk version 2.4.0 or later (main branch)
+- For Checkmk 2.3.x, use the `checkmk-2.3` branch
 - Checkmk Raw, Enterprise, or Cloud edition
 
 ### Monitored Windows Hosts
@@ -209,9 +210,17 @@ cmk --detect-plugins=pki_ca_info,pki_cert_summary,pki_expiring_certs -v hostname
 
 MIT License - See LICENSE file for details.
 
+## Repository
+
+GitHub: https://github.com/Madfrog75/checkmk-pki-monitor
+
+### Branches
+- **main** - Checkmk 2.4+ compatible
+- **checkmk-2.3** - Checkmk 2.3.x compatible
+
 ## Support
 
-For issues and feature requests, please open an issue in the repository.
+For issues and feature requests, please open an issue in the GitHub repository.
 
 
 

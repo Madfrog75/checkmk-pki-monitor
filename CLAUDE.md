@@ -49,12 +49,17 @@ Each check follows this pattern:
 4. `CheckPlugin` wires everything together with `check_ruleset_name` linking to rulesets
 
 ### Key APIs
-- Uses `cmk.agent_based.v2` for check plugins (Checkmk 2.3+)
+- Uses `cmk.agent_based.v2` for check plugins (Checkmk 2.4+)
 - Uses `cmk.rulesets.v1` for WATO rules
 - Uses `cmk.graphing.v1` for metrics/perfometers
 - PowerShell uses `CertificateAuthority.View` COM object to query CA database
 
 ## Requirements
-- Checkmk 2.3.0+
+- Checkmk 2.4.0+ (main branch uses 2.4 MKP format)
+- For Checkmk 2.3.x, use the `checkmk-2.3` branch
 - Windows hosts need ADCS role or RSAT-ADCS-Mgmt tools
 - PowerShell 5.1+
+
+## Branch Strategy
+- **main** - Checkmk 2.4+ compatible (uses `cmk_addons_plugins` structure and tar archive format)
+- **checkmk-2.3** - Checkmk 2.3.x compatible (uses legacy `cmk/plugins` structure)
