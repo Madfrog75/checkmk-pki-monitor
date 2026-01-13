@@ -3,18 +3,16 @@
     "title": "PKI Certificate Monitor",
     "description": "Monitor Microsoft Active Directory Certificate Services (ADCS) and track certificate expiration across your PKI infrastructure.",
     "version": "1.0.0",
-    "version.min_required": "2.3.0",
+    "version.min_required": "2.4.0",
+    "version.packaged": "2.4.0",
+    "version.usable_until": null,
     "author": "PKI Monitor Plugin",
     "download_url": "",
     "files": {
-        "agent_based": [
-            "pki_monitor.py"
-        ],
-        "rulesets": [
-            "pki_monitor.py"
-        ],
-        "graphing": [
-            "pki_monitor.py"
+        "cmk_addons_plugins": [
+            "pki_monitor/agent_based/pki_monitor.py",
+            "pki_monitor/graphing/pki_monitor.py",
+            "pki_monitor/rulesets/pki_monitor.py"
         ],
         "agents": [
             "windows/plugins/pki_monitor.ps1",

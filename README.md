@@ -212,3 +212,42 @@ MIT License - See LICENSE file for details.
 ## Support
 
 For issues and feature requests, please open an issue in the repository.
+
+
+
+Checkmk Raw Edition (including the Docker instance) does not provide the MKP extension management GUI available in commercial editions. Therefore, the "Extensions" option is missing from the Maintenance menu in your Raw Edition Docker instance.
+
+To install a Checkmk extension (MKP file) in Checkmk Raw, you must use the command line interface inside the site user environment. The process is:
+
+1. Copy your `.mkp` file into the Docker container:
+   ```
+   docker cp your_extension.mkp <container_name>:/tmp/
+   ```
+2. Enter the site user shell inside the container:
+   ```
+   docker exec -it <container_name> su - cmk
+   ```
+3. Add the MKP package using the `mkp` command:
+   ```
+   mkp add /tmp/your_extension.mkp
+   ```
+4. Enable the package (name and version as separate arguments):
+   ```
+   mkp enable your_extension 1.0.0
+   ```
+5. Verify the installation:
+   ```
+   mkp list
+   ```
+6. Activate changes in Checkmk to apply the extension:
+   ```
+   cmk -R
+   ```
+
+This CLI method is the supported way to install MKPs in Checkmk Raw, as the GUI management of MKPs is only available in commercial editions [Manage MKPs via Setup Menu](https://docs.checkmk.com/latest/en/mkps.html#wato), [MKP Command Line Installation](https://docs.checkmk.com/latest/en/mkp_viewables.html#cli), [Blog Raw Edition MKP CLI Install](https://checkmk.com/blog/feature-pack-2-comes-with-prometheus-integration).
+
+If you want to install extensions from the Checkmk Exchange or other sources, download the `.mkp` file and then install it via the CLI as described.
+
+In summary, for your Docker Raw instance, use the `mkp` CLI commands inside the site user shell to install and enable your MKP extension package. The GUI option is not present in Raw Edition.
+
+For more details, see the official documentation on MKP CLI usage and the note about GUI MKP management being commercial-only.
