@@ -61,14 +61,17 @@ cat > "${BUILD_DIR}/info" << EOF
 EOF
 
 # Create individual tar archives for each file category
+# IMPORTANT: Paths inside tar must match the info file paths (no category prefix)
 echo "Creating tar archives..."
 
-# Create lib tar archive
-cd "${STAGING_DIR}"
-tar -cf "${BUILD_DIR}/lib.tar" lib
-tar -cf "${BUILD_DIR}/agents.tar" agents
+# Create lib tar archive - cd into lib dir so paths start with python3/
+cd "${STAGING_DIR}/lib"
+tar -cf "${BUILD_DIR}/lib.tar" python3
 
-# Move info to build dir (already there)
+# Create agents tar archive - cd into agents dir so paths start with windows/
+cd "${STAGING_DIR}/agents"
+tar -cf "${BUILD_DIR}/agents.tar" windows
+
 cd "${BUILD_DIR}"
 
 # Clean up staging directory
