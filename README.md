@@ -1,214 +1,137 @@
-# PKI Monitor - Checkmk Plugin
+# PKI Certificate Monitor - Checkmk 2.3
 
 A Checkmk plugin for monitoring Microsoft Active Directory Certificate Services (ADCS) and tracking certificate expiration across your PKI infrastructure.
 
+**This version is compatible with Checkmk 2.3.x only.** For Checkmk 2.4+, use the `pki_monitor` directory.
+
 ## Features
 
-- **Certificate Authority Monitoring**
-  - CA service status (running/stopped)
-  - CA certificate expiration tracking
-  - Template count reporting
-
-- **Certificate Expiration Tracking**
-  - Summary of expiring certificates per CA
-  - Individual certificate expiration alerts
-  - Configurable warning and critical thresholds
-
-- **Metrics and Visualization**
-  - Certificate expiration graphs
-  - Perfometers for quick status overview
-  - Historical trend data
+- Monitor Certificate Authority health and service status
+- Track CA certificate expiration
+- Monitor issued certificate expiration summary
+- Individual expiring certificate alerts with details
 
 ## Requirements
 
-### Checkmk Server
-- Checkmk version 2.3.0 or later
-- Checkmk Raw, Enterprise, or Cloud edition
-
-### Monitored Windows Hosts
-- Windows Server 2012 R2 or later
-- PowerShell 5.1 or later
-- One of the following:
-  - Active Directory Certificate Services (ADCS) role installed
-  - RSAT-ADCS-Mgmt tools installed
-- Network connectivity to Certificate Authority servers
-- Appropriate permissions to query CA database
+- Checkmk 2.3.0 - 2.3.x (not compatible with 2.4+)
+- Windows hosts with ADCS role or RSAT-ADCS-Mgmt tools
+- PowerShell 5.1+
 
 ## Installation
 
-### Option 1: MKP Package (Recommended)
-
-1. Download the `pki_monitor-1.0.0.mkp` package
-2. Upload via Checkmk GUI: Setup → Extension Packages → Upload package
-3. Activate the package
-
-### Option 2: Manual Installation
-
-#### Checkmk Server
-
-Copy the following directories to your Checkmk site's `local` directory:
+### Build the MKP Package
 
 ```bash
-# As site user (e.g., su - mysite)
-cp -r local/lib/python3/cmk_addons/plugins/pki_monitor ~/local/lib/python3/cmk_addons/plugins/
+cd pki_monitor_2.3
+./build_mkp.sh
 ```
 
-#### Windows Agent
+This creates `pki_monitor-1.0.0.mkp` in the current directory.
 
-1. Copy `pki_monitor.ps1` to the Windows agent plugins directory:
-   ```
-   C:\ProgramData\checkmk\agent\plugins\pki_monitor.ps1
-   ```
+### Install on Checkmk Server
 
-2. (Optional) Copy and customize the configuration file:
-   ```
-   C:\ProgramData\checkmk\agent\plugins\pki_monitor.cfg.ps1
-   ```
+```bash
+# Copy to Checkmk container
+docker cp pki_monitor-1.0.0.mkp checkmk-monitoring:/tmp/
 
-3. Restart the Checkmk agent service or wait for the next check interval
+# Install the package
+docker exec -it checkmk-monitoring su - cmk -c 'mkp add /tmp/pki_monitor-1.0.0.mkp'
+docker exec -it checkmk-monitoring su - cmk -c 'mkp enable pki_monitor 1.0.0'
+docker exec -it checkmk-monitoring su - cmk -c 'cmk -R'
+```
+
+### Deploy Windows Agent Plugin
+
+Copy the following files to your Windows hosts with ADCS:
+
+- `pki_monitor.ps1` -> `C:\ProgramData\checkmk\agent\plugins\`
+- `pki_monitor.cfg.ps1` -> `C:\ProgramData\checkmk\agent\plugins\` (optional, for configuration)
 
 ## Configuration
 
-### Agent Configuration
+### Windows Agent Configuration
 
-Edit `pki_monitor.cfg.ps1` on the monitored Windows host:
+Edit `pki_monitor.cfg.ps1` to customize:
 
 ```powershell
 $script:Config = @{
-    # Days before expiration to trigger WARNING
-    ExpireWarningDays = 30
-
-    # Days before expiration to trigger CRITICAL
-    ExpireCriticalDays = 14
-
-    # Maximum certificates to retrieve per CA
-    MaxCertificates = 1000
-
-    # Include recently expired certificates
-    IncludeExpired = $false
-
-    # Cache results (minutes)
-    CacheTimeMinutes = 60
+    ExpireWarningDays = 30      # Days before expiration to warn
+    ExpireCriticalDays = 14     # Days before expiration to go critical
+    MaxCertificates = 1000      # Maximum certificates to retrieve per CA
+    IncludeExpired = $false     # Include already expired certificates
+    MonitoringPeriodDays = 365  # Monitoring period for certificates
 }
 ```
 
-### Checkmk Rules
+### Checkmk WATO Rules
 
-Configure monitoring parameters via the Checkmk GUI:
+Configure thresholds in WATO under **Setup > Services > Service monitoring rules**:
 
-1. **Setup → Services → Service monitoring rules**
-2. Search for "PKI" to find available rules:
-   - **PKI Certificate Authority**: CA service and certificate thresholds
-   - **PKI Certificate Summary**: Summary monitoring settings
-   - **PKI Expiring Certificates**: Individual certificate thresholds
+- **PKI Certificate Authority** - CA certificate expiration thresholds
+- **PKI Certificate Summary** - (Future expansion)
+- **PKI Expiring Certificates** - Individual certificate thresholds and display limits
 
 ## Services Created
 
-The plugin creates the following services on monitored hosts:
-
 | Service Name | Description |
-|--------------|-------------|
-| PKI CA *[CAName]* | Certificate Authority health and status |
-| PKI Certificates *[CAName]* | Summary of certificate expiration counts |
-| PKI Expiring Certs *[CAName]* | Details of individual expiring certificates |
+|-------------|-------------|
+| PKI CA `<name>` | CA health, service status, CA certificate expiration |
+| PKI Certificates `<name>` | Certificate expiration summary counts |
+| PKI Expiring Certs `<name>` | Individual expiring certificate details |
 
 ## Metrics
 
-| Metric | Description |
-|--------|-------------|
-| `ca_cert_days_remaining` | Days until CA certificate expires |
-| `ca_template_count` | Number of certificate templates |
-| `certs_critical` | Certificates expiring critically soon |
-| `certs_warning` | Certificates with warning-level expiration |
-| `certs_ok` | Certificates with OK status |
-| `certs_total` | Total certificates monitored |
+- `ca_cert_days_remaining` - Days until CA certificate expires
+- `ca_template_count` - Number of certificate templates
+- `certs_critical` - Certificates expiring critically soon
+- `certs_warning` - Certificates expiring soon (warning)
+- `certs_ok` - Certificates with OK expiration status
+- `certs_total` - Total monitored certificates
 
 ## Troubleshooting
 
-### Agent Output
-
-Test the agent plugin manually on the Windows host:
+### Test Agent Plugin
 
 ```powershell
+# On Windows host
 powershell -ExecutionPolicy Bypass -File "C:\ProgramData\checkmk\agent\plugins\pki_monitor.ps1"
 ```
 
-Expected output format:
-```
-<<<pki_ca_info:sep(59)>>>
-MyCA;ca.domain.com;Running;365;15
-<<<pki_cert_summary:sep(59)>>>
-MyCA;0;5;100;105
-<<<pki_expiring_certs:sep(59)>>>
-MyCA;webserver.domain.com;2024-03-15 12:00:00;14;WebServer;ABC123
-```
-
-### Common Issues
-
-1. **No CAs found**
-   - Verify ADCS role or RSAT tools are installed
-   - Check domain connectivity
-   - Ensure the service account has permissions
-
-2. **Permission errors**
-   - The Checkmk agent service account needs read access to CA database
-   - Consider running the agent as a domain account with CA read permissions
-
-3. **Service discovery not working**
-   - Run discovery on the host: `cmk -vI hostname`
-   - Check agent output: `cmk -d hostname`
-
-## Development
-
-### Project Structure
-
-```
-pki_monitor/
-├── local/
-│   ├── lib/python3/cmk_addons/plugins/pki_monitor/
-│   │   ├── agent_based/
-│   │   │   └── pki_monitor.py      # Check plugins
-│   │   ├── rulesets/
-│   │   │   └── pki_monitor.py      # WATO rules
-│   │   └── graphing/
-│   │       └── pki_monitor.py      # Metrics/graphs
-│   └── share/check_mk/agents/windows/plugins/
-│       ├── pki_monitor.ps1         # Agent plugin
-│       └── pki_monitor.cfg.ps1     # Configuration
-├── tests/
-│   └── test_pki_monitor.py
-├── package_info.json
-└── README.md
-```
-
-### Testing
-
-Run the check plugin tests:
-
-```bash
-pytest tests/test_pki_monitor.py -v
-```
-
-Test on Checkmk server:
+### Test Check on Checkmk Server
 
 ```bash
 # Discover services
 cmk -vI --detect-plugins=pki_ca_info,pki_cert_summary,pki_expiring_certs hostname
 
-# Run checks
+# Run checks manually
 cmk --detect-plugins=pki_ca_info,pki_cert_summary,pki_expiring_certs -v hostname
+
+# View raw agent output
+cmk -d hostname | grep -A 50 "<<<pki_"
 ```
 
-## Credits
+## Directory Structure
 
-- Based on [PKITools](https://github.com/BladeFireLight/PKITools) by BladeFireLight
-- Plugin structure inspired by [kpc_windows_updates](https://github.com/matthias1232/kpc_windows_updates)
-- Checkmk documentation: [Developing agent-based check plugins](https://docs.checkmk.com/latest/en/devel_check_plugins.html)
+```
+pki_monitor_2.3/
+├── build_mkp.sh                          # Build script for 2.3 MKP format
+├── README.md
+├── local/
+│   ├── lib/python3/cmk/
+│   │   ├── base/plugins/agent_based/
+│   │   │   └── pki_monitor.py            # Check plugins
+│   │   └── gui/plugins/
+│   │       ├── wato/
+│   │       │   └── pki_monitor.py        # WATO rulesets
+│   │       └── metrics/
+│   │           └── pki_monitor.py        # Metrics/graphing
+│   └── share/check_mk/agents/windows/plugins/
+│       ├── pki_monitor.ps1               # Windows agent plugin
+│       └── pki_monitor.cfg.ps1           # Agent configuration
+└── tests/
+    └── (test files)
+```
 
 ## License
 
-MIT License - See LICENSE file for details.
-
-## Support
-
-For issues and feature requests, please open an issue in the repository.
+MIT License

@@ -9,6 +9,8 @@ This plugin monitors:
 - Issued certificate expiration summary
 - Individual expiring certificates
 
+Compatible with Checkmk 2.3.x
+
 Author: PKI Monitor Plugin
 Version: 1.0.0
 """
@@ -156,7 +158,6 @@ def check_pki_ca_info(
             render_func=lambda x: f"{x:.0f} days",
             label="CA certificate expires in",
         )
-        # Note: check_levels already emits the metric, no need for additional Metric yield
     else:
         yield Result(state=State.WARN, summary="CA certificate expiration unknown")
 
