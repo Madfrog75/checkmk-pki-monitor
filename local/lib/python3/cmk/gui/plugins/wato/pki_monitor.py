@@ -10,16 +10,61 @@ Compatible with Checkmk 2.3.x (uses legacy WATO API).
 from cmk.gui.i18n import _
 from cmk.gui.valuespec import (
     Dictionary,
+    DropdownChoice,
     Integer,
     TextInput,
     Tuple,
 )
 from cmk.gui.plugins.wato.utils import (
     CheckParameterRulespecWithItem,
+    HostRulespec,
     rulespec_registry,
     RulespecGroupCheckParametersApplications,
+    RulespecGroupMonitoringAgentsAgentPlugins,
 )
 
+
+# =============================================================================
+# Agent Deployment Rule (appears under Setup > Agents > Agent rules)
+# =============================================================================
+
+def _valuespec_agent_config_pki_monitor():
+    """Valuespec for agent plugin deployment rule."""
+    return Dictionary(
+        title=_("PKI Monitor (Windows)"),
+        help=_(
+            "This rule deploys the PKI Monitor agent plugin to Windows hosts. "
+            "The plugin queries Microsoft ADCS Certificate Authorities and reports "
+            "certificate expiration data back to the Checkmk server."
+        ),
+        elements=[
+            (
+                "deploy",
+                DropdownChoice(
+                    title=_("Deploy PKI Monitor plugin"),
+                    choices=[
+                        (True, _("Deploy the PKI Monitor agent plugin")),
+                        (False, _("Do not deploy")),
+                    ],
+                    default_value=True,
+                ),
+            ),
+        ],
+    )
+
+
+rulespec_registry.register(
+    HostRulespec(
+        group=RulespecGroupMonitoringAgentsAgentPlugins,
+        name="agent_config:pki_monitor",
+        valuespec=_valuespec_agent_config_pki_monitor,
+    )
+)
+
+
+# =============================================================================
+# Check Parameter Rules (appear under Setup > Services > Service monitoring rules)
+# =============================================================================
 
 def _parameter_valuespec_pki_ca_info():
     """Parameter valuespec for PKI CA Info check."""

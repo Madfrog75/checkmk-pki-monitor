@@ -37,6 +37,11 @@ mkdir -p "${STAGING_DIR}/lib/python3/cmk/gui/plugins/metrics"
 cp "${SCRIPT_DIR}/local/lib/python3/cmk/gui/plugins/metrics/"*.py \
    "${STAGING_DIR}/lib/python3/cmk/gui/plugins/metrics/"
 
+# Bakery plugin (Enterprise Edition - agent deployment)
+mkdir -p "${STAGING_DIR}/lib/python3/cmk/base/cee/plugins/bakery"
+cp "${SCRIPT_DIR}/local/lib/python3/cmk/base/cee/plugins/bakery/"*.py \
+   "${STAGING_DIR}/lib/python3/cmk/base/cee/plugins/bakery/"
+
 # Windows agent plugins go to agents/windows/plugins/
 mkdir -p "${STAGING_DIR}/agents/windows/plugins"
 cp "${SCRIPT_DIR}/local/share/check_mk/agents/windows/plugins/"*.ps1 \
@@ -49,7 +54,8 @@ cat > "${BUILD_DIR}/info" << EOF
  'download_url': '',
  'files': {'lib': ['python3/cmk/base/plugins/agent_based/${PLUGIN_NAME}.py',
                    'python3/cmk/gui/plugins/wato/${PLUGIN_NAME}.py',
-                   'python3/cmk/gui/plugins/metrics/${PLUGIN_NAME}.py'],
+                   'python3/cmk/gui/plugins/metrics/${PLUGIN_NAME}.py',
+                   'python3/cmk/base/cee/plugins/bakery/${PLUGIN_NAME}.py'],
            'agents': ['windows/plugins/${PLUGIN_NAME}.ps1',
                       'windows/plugins/${PLUGIN_NAME}.cfg.ps1']},
  'name': '${PLUGIN_NAME}',
