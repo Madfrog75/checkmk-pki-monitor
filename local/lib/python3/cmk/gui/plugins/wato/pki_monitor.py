@@ -20,12 +20,19 @@ from cmk.gui.plugins.wato.utils import (
     HostRulespec,
     rulespec_registry,
     RulespecGroupCheckParametersApplications,
-    RulespecGroupMonitoringAgentsAgentPlugins,
 )
+
+try:
+    from cmk.gui.cee.plugins.wato.agent_bakery.rulespecs.utils import (
+        RulespecGroupMonitoringAgentsAgentPlugins,
+    )
+except ImportError:
+    RulespecGroupMonitoringAgentsAgentPlugins = None
 
 
 # =============================================================================
 # Agent Deployment Rule (appears under Setup > Agents > Agent rules)
+# Only available in Enterprise Edition (requires Agent Bakery)
 # =============================================================================
 
 def _valuespec_agent_config_pki_monitor():
@@ -53,13 +60,14 @@ def _valuespec_agent_config_pki_monitor():
     )
 
 
-rulespec_registry.register(
-    HostRulespec(
-        group=RulespecGroupMonitoringAgentsAgentPlugins,
-        name="agent_config:pki_monitor",
-        valuespec=_valuespec_agent_config_pki_monitor,
+if RulespecGroupMonitoringAgentsAgentPlugins is not None:
+    rulespec_registry.register(
+        HostRulespec(
+            group=RulespecGroupMonitoringAgentsAgentPlugins,
+            name="agent_config:pki_monitor",
+            valuespec=_valuespec_agent_config_pki_monitor,
+        )
     )
-)
 
 
 # =============================================================================
