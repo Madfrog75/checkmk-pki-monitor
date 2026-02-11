@@ -24,14 +24,36 @@ from .bakery_api.v1 import (
 def get_pki_monitor_files(conf: Dict[str, Any]) -> FileGenerator:
     """Yield plugin files for deployment to Windows hosts."""
     if conf.get("deploy", True):
+        # Deploy the main PowerShell agent plugin
         yield Plugin(
             base_os=OS.WINDOWS,
             source=Path("pki_monitor.ps1"),
         )
+
+        # Generate the default configuration file
+        # PluginConfig creates files from lines content (not from source files)
         yield PluginConfig(
             base_os=OS.WINDOWS,
-            source=Path("pki_monitor.cfg.ps1"),
+            lines=[
+                '<#',
+                '.SYNOPSIS',
+                '    Configuration file for PKI Monitor Checkmk Agent Plugin',
+                '.DESCRIPTION',
+                '    Modify these settings to customize the plugin behavior.',
+                '#>',
+                '',
+                '# Override default configuration',
+                '$script:Config = @{',
+                '    ExpireWarningDays = 30',
+                '    ExpireCriticalDays = 14',
+                '    MaxCertificates = 1000',
+                '    IncludeExpired = $false',
+                '    CacheTimeMinutes = 60',
+                '    MonitoringPeriodDays = 365',
+                '}',
+            ],
             target=Path("pki_monitor.cfg.ps1"),
+            include_header=False,
         )
 
 
