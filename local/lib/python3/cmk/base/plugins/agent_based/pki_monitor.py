@@ -15,22 +15,22 @@ Author: PKI Monitor Plugin
 Version: 1.0.0
 """
 
-from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Generator, List, Mapping, Union
 
 from cmk.agent_based.v2 import (
     AgentSection,
     CheckPlugin,
-    CheckResult,
-    DiscoveryResult,
     Metric,
     Result,
     Service,
     State,
-    StringTable,
     check_levels,
-    render,
 )
+
+# Type aliases - these are not exported from cmk.agent_based.v2
+StringTable = List[List[str]]
+CheckResult = Generator[Union[Result, Metric], None, None]
+DiscoveryResult = Generator[Service, None, None]
 
 
 # =============================================================================
