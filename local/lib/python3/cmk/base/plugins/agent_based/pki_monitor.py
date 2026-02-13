@@ -2,20 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Checkmk agent-based check plugin for PKI Certificate Monitoring.
-
-This plugin monitors:
-- Certificate Authority health and service status
-- CA certificate expiration
-- Issued certificate expiration summary
-- Individual expiring certificates
-
-Compatible with Checkmk 2.3.x
-
-Author: PKI Monitor Plugin
-Version: 1.0.0
+Compatible with Checkmk 2.3.x - uses only confirmed v2 API exports.
 """
-
-from typing import Any, Dict, Generator, List, Mapping, Union
 
 from cmk.agent_based.v2 import (
     AgentSection,
@@ -24,47 +12,25 @@ from cmk.agent_based.v2 import (
     Result,
     Service,
     State,
-    check_levels,
 )
 
-# Type aliases - these are not exported from cmk.agent_based.v2
-StringTable = List[List[str]]
-CheckResult = Generator[Union[Result, Metric], None, None]
-DiscoveryResult = Generator[Service, None, None]
-
 
 # =============================================================================
-# Section: pki_ca_info - Certificate Authority Information
+# Section: pki_ca_info
 # =============================================================================
 
-def parse_pki_ca_info(string_table: StringTable) -> Dict[str, Dict[str, Any]]:
-    """
-    Parse CA information section.
-
-    Expected format (semicolon separated):
-    CAName;DNSHostName;ServiceStatus;CACertDaysUntilExpire;TemplateCount
-
-    Example:
-    MyCA;ca.domain.com;Running;365;15
-    """
+def parse_pki_ca_info(string_table):
     parsed = {}
-    parse_errors = 0
-
     for line in string_table:
         if len(line) < 5:
-            parse_errors += 1
             continue
-
         ca_name = line[0]
-
-        # Check for error conditions
         if ca_name in ("ERROR", "CRITICAL_ERROR", "CONFIG_ERROR"):
             parsed["_error"] = {
                 "message": line[1] if len(line) > 1 else "Unknown error",
                 "type": ca_name,
             }
             continue
-
         try:
             parsed[ca_name] = {
                 "dns_hostname": line[1],
@@ -73,12 +39,7 @@ def parse_pki_ca_info(string_table: StringTable) -> Dict[str, Dict[str, Any]]:
                 "template_count": int(line[4]) if line[4] != "-1" else 0,
             }
         except (ValueError, IndexError):
-            parse_errors += 1
             continue
-
-    if parse_errors > 0:
-        parsed["_parse_errors"] = parse_errors
-
     return parsed
 
 
@@ -88,35 +49,17 @@ agent_section_pki_ca_info = AgentSection(
 )
 
 
-def discover_pki_ca_info(section: Dict[str, Dict[str, Any]]) -> DiscoveryResult:
-    """Discover Certificate Authorities."""
+def discover_pki_ca_info(section):
     for ca_name in section:
         if not ca_name.startswith("_"):
             yield Service(item=ca_name)
 
 
-def check_pki_ca_info(
-    item: str,
-    params: Mapping[str, Any],
-    section: Dict[str, Dict[str, Any]],
-) -> CheckResult:
-    """Check Certificate Authority health."""
-
-    # Report parse errors if any
-    if "_parse_errors" in section:
-        yield Result(
-            state=State.WARN,
-            notice=f"{section['_parse_errors']} lines could not be parsed from agent output",
-        )
-
-    # Check for agent-reported errors
+def check_pki_ca_info(item, params, section):
     if "_error" in section:
         error = section["_error"]
         error_state = State.CRIT if error["type"] in ("CRITICAL_ERROR", "CONFIG_ERROR") else State.WARN
-        yield Result(
-            state=error_state,
-            summary=f"PKI query error: {error['message']}",
-        )
+        yield Result(state=error_state, summary="PKI query error: %s" % error["message"])
         return
 
     if item not in section:
@@ -125,50 +68,39 @@ def check_pki_ca_info(
 
     ca_info = section[item]
 
-    # Check service status
+    # Service status
     service_status = ca_info.get("service_status", "Unknown")
     if service_status == "Running":
-        yield Result(state=State.OK, summary=f"Service: {service_status}")
-    elif service_status in ("Stopped", "Error"):
-        yield Result(state=State.CRIT, summary=f"Service: {service_status}")
-    elif service_status == "Unknown":
-        yield Result(state=State.CRIT, summary=f"Service: {service_status} - cannot query service")
-    elif service_status in ("StartPending", "ContinuePending", "StopPending"):
-        yield Result(state=State.WARN, summary=f"Service: {service_status}")
+        yield Result(state=State.OK, summary="Service: %s" % service_status)
+    elif service_status in ("Stopped", "Error", "Unknown"):
+        yield Result(state=State.CRIT, summary="Service: %s" % service_status)
     else:
-        yield Result(state=State.WARN, summary=f"Service: {service_status}")
+        yield Result(state=State.WARN, summary="Service: %s" % service_status)
 
-    # Check CA certificate expiration
+    # CA certificate expiration
     ca_days = ca_info.get("ca_cert_days_expire")
     if ca_days is not None:
         warn_days = params.get("ca_cert_warn_days", 90)
         crit_days = params.get("ca_cert_crit_days", 30)
 
-        # Validate threshold ordering
-        if warn_days <= crit_days:
-            yield Result(
-                state=State.WARN,
-                notice=f"Invalid thresholds: warn_days ({warn_days}) should be > crit_days ({crit_days})",
-            )
+        if ca_days <= crit_days:
+            yield Result(state=State.CRIT, summary="CA certificate expires in %d days" % ca_days)
+        elif ca_days <= warn_days:
+            yield Result(state=State.WARN, summary="CA certificate expires in %d days" % ca_days)
+        else:
+            yield Result(state=State.OK, summary="CA certificate expires in %d days" % ca_days)
 
-        yield from check_levels(
-            ca_days,
-            metric_name="ca_cert_days_remaining",
-            levels_lower=(warn_days, crit_days),
-            render_func=lambda x: f"{x:.0f} days",
-            label="CA certificate expires in",
-        )
+        yield Metric("ca_cert_days_remaining", ca_days)
     else:
         yield Result(state=State.WARN, summary="CA certificate expiration unknown")
 
-    # Report template count
+    # Template count
     template_count = ca_info.get("template_count", 0)
-    yield Result(state=State.OK, summary=f"Templates: {template_count}")
+    yield Result(state=State.OK, summary="Templates: %d" % template_count)
     yield Metric("ca_template_count", template_count)
 
-    # Report hostname
-    hostname = ca_info.get("dns_hostname", "Unknown")
-    yield Result(state=State.OK, notice=f"Hostname: {hostname}")
+    # Hostname
+    yield Result(state=State.OK, notice="Hostname: %s" % ca_info.get("dns_hostname", "Unknown"))
 
 
 check_plugin_pki_ca_info = CheckPlugin(
@@ -185,43 +117,23 @@ check_plugin_pki_ca_info = CheckPlugin(
 
 
 # =============================================================================
-# Section: pki_cert_summary - Certificate Expiration Summary
+# Section: pki_cert_summary
 # =============================================================================
 
-def parse_pki_cert_summary(string_table: StringTable) -> Dict[str, Dict[str, Any]]:
-    """
-    Parse certificate summary section.
-
-    Expected format (semicolon separated):
-    CAName;CriticalCount;WarningCount;OKCount;TotalCount[;TRUNCATED]
-
-    Example:
-    MyCA;2;5;100;107
-    MyCA;2;5;100;107;TRUNCATED
-    """
-    parsed: Dict[str, Dict[str, Any]] = {}
-    parse_errors = 0
-
+def parse_pki_cert_summary(string_table):
+    parsed = {}
     for line in string_table:
         if len(line) < 5:
-            parse_errors += 1
             continue
-
         ca_name = line[0]
-
         try:
             critical_count = int(line[1])
             warning_count = int(line[2])
             ok_count = int(line[3])
             total_count = int(line[4])
-
-            # Skip error markers
             if critical_count < 0:
                 continue
-
-            # Check for TRUNCATED flag (MaxResults was reached)
             truncated = len(line) > 5 and line[5] == "TRUNCATED"
-
             parsed[ca_name] = {
                 "critical": critical_count,
                 "warning": warning_count,
@@ -230,12 +142,7 @@ def parse_pki_cert_summary(string_table: StringTable) -> Dict[str, Dict[str, Any
                 "truncated": truncated,
             }
         except (ValueError, IndexError):
-            parse_errors += 1
             continue
-
-    if parse_errors > 0:
-        parsed["_parse_errors"] = parse_errors  # type: ignore
-
     return parsed
 
 
@@ -245,66 +152,39 @@ agent_section_pki_cert_summary = AgentSection(
 )
 
 
-def discover_pki_cert_summary(section: Dict[str, Dict[str, int]]) -> DiscoveryResult:
-    """Discover CA certificate summaries."""
+def discover_pki_cert_summary(section):
     for ca_name in section:
         if not ca_name.startswith("_"):
             yield Service(item=ca_name)
 
 
-def check_pki_cert_summary(
-    item: str,
-    params: Mapping[str, Any],
-    section: Dict[str, Dict[str, Any]],
-) -> CheckResult:
-    """Check certificate expiration summary."""
-
-    # Report parse errors if any
-    if "_parse_errors" in section:
-        yield Result(
-            state=State.WARN,
-            notice=f"{section['_parse_errors']} lines could not be parsed from agent output",
-        )
-
+def check_pki_cert_summary(item, params, section):
     if item not in section:
         yield Result(state=State.UNKNOWN, summary="CA not found in agent output")
         return
 
-    summary = section[item]
+    data = section[item]
+    critical_count = data["critical"]
+    warning_count = data["warning"]
+    ok_count = data["ok"]
+    total_count = data["total"]
+    truncated = data.get("truncated", False)
 
-    critical_count = summary["critical"]
-    warning_count = summary["warning"]
-    ok_count = summary["ok"]
-    total_count = summary["total"]
-    truncated = summary.get("truncated", False)
-
-    # Determine overall state based on expiring certificates
     if critical_count > 0:
-        state = State.CRIT
-        summary_text = f"{critical_count} certificates expiring critically soon"
+        yield Result(state=State.CRIT, summary="%d certificates expiring critically soon" % critical_count)
     elif warning_count > 0:
-        state = State.WARN
-        summary_text = f"{warning_count} certificates expiring soon"
+        yield Result(state=State.WARN, summary="%d certificates expiring soon" % warning_count)
     else:
-        state = State.OK
-        summary_text = f"All {total_count} certificates OK"
+        yield Result(state=State.OK, summary="All %d certificates OK" % total_count)
 
-    yield Result(state=state, summary=summary_text)
-
-    # Warn if data was truncated due to MaxResults limit
     if truncated:
-        yield Result(
-            state=State.WARN,
-            summary="Data incomplete: MaxCertificates limit reached",
-        )
+        yield Result(state=State.WARN, summary="Data incomplete: MaxCertificates limit reached")
 
-    # Detailed breakdown
     yield Result(
         state=State.OK,
-        notice=f"Critical: {critical_count}, Warning: {warning_count}, OK: {ok_count}, Total: {total_count}",
+        notice="Critical: %d, Warning: %d, OK: %d, Total: %d" % (critical_count, warning_count, ok_count, total_count),
     )
 
-    # Metrics
     yield Metric("certs_critical", critical_count)
     yield Metric("certs_warning", warning_count)
     yield Metric("certs_ok", ok_count)
@@ -322,39 +202,22 @@ check_plugin_pki_cert_summary = CheckPlugin(
 
 
 # =============================================================================
-# Section: pki_expiring_certs - Individual Expiring Certificates
+# Section: pki_expiring_certs
 # =============================================================================
 
-def parse_pki_expiring_certs(string_table: StringTable) -> Dict[str, Any]:
-    """
-    Parse individual expiring certificates section.
-
-    Expected format (semicolon separated):
-    CAName;CommonName;ExpirationDate;DaysUntilExpire;Template;Thumbprint
-
-    Example:
-    MyCA;webserver.domain.com;2024-03-15 12:00:00;14;WebServer;ABC123
-    """
-    parsed: Dict[str, Any] = {}
-    parse_errors = 0
-
+def parse_pki_expiring_certs(string_table):
+    parsed = {}
     for line in string_table:
         if len(line) < 6:
-            parse_errors += 1
             continue
-
         ca_name = line[0]
         common_name = line[1]
-
-        # Skip error entries
         if common_name == "ERROR":
             continue
-
         try:
             days_until_expire = int(line[3])
         except ValueError:
             days_until_expire = -999
-            parse_errors += 1
 
         cert_info = {
             "common_name": common_name,
@@ -367,10 +230,6 @@ def parse_pki_expiring_certs(string_table: StringTable) -> Dict[str, Any]:
         if ca_name not in parsed:
             parsed[ca_name] = []
         parsed[ca_name].append(cert_info)
-
-    if parse_errors > 0:
-        parsed["_parse_errors"] = parse_errors
-
     return parsed
 
 
@@ -380,39 +239,19 @@ agent_section_pki_expiring_certs = AgentSection(
 )
 
 
-def discover_pki_expiring_certs(section: Dict[str, List[Dict[str, Any]]]) -> DiscoveryResult:
-    """Discover expiring certificate services per CA."""
+def discover_pki_expiring_certs(section):
     for ca_name in section:
         if not ca_name.startswith("_"):
             yield Service(item=ca_name)
 
 
-def check_pki_expiring_certs(
-    item: str,
-    params: Mapping[str, Any],
-    section: Dict[str, Any],
-) -> CheckResult:
-    """Check individual expiring certificates."""
-
-    # Report parse errors if any
-    if "_parse_errors" in section:
-        yield Result(
-            state=State.WARN,
-            notice=f"{section['_parse_errors']} lines could not be parsed from agent output",
-        )
-
+def check_pki_expiring_certs(item, params, section):
     if item not in section:
         yield Result(state=State.OK, summary="No expiring certificates")
         return
 
     certs = section[item]
-
-    # Handle case where certs is the parse_errors value (int)
-    if not isinstance(certs, list):
-        yield Result(state=State.OK, summary="No expiring certificates")
-        return
-
-    if not certs:
+    if not isinstance(certs, list) or not certs:
         yield Result(state=State.OK, summary="No expiring certificates")
         return
 
@@ -420,69 +259,46 @@ def check_pki_expiring_certs(
     crit_days = params.get("crit_days", 14)
     max_display = params.get("max_display", 20)
 
-    # Validate threshold ordering
-    if warn_days <= crit_days:
-        yield Result(
-            state=State.WARN,
-            notice=f"Invalid thresholds: warn_days ({warn_days}) should be > crit_days ({crit_days})",
-        )
-
-    # Filter out parse errors (-999) and separate expired certs from valid ones
     valid_certs = [c for c in certs if c["days_until_expire"] > -999]
     expired_certs = [c for c in valid_certs if c["days_until_expire"] < 0]
     active_certs = [c for c in valid_certs if c["days_until_expire"] >= 0]
-
-    # Sort by days until expiration (soonest first)
     certs_sorted = sorted(active_certs, key=lambda x: x["days_until_expire"])
 
-    critical_certs = []
-    warning_certs = []
+    critical_certs = [c for c in certs_sorted if c["days_until_expire"] <= crit_days]
+    warning_certs = [c for c in certs_sorted if crit_days < c["days_until_expire"] <= warn_days]
 
-    for cert in certs_sorted:
-        days = cert["days_until_expire"]
-        if days <= crit_days:
-            critical_certs.append(cert)
-        elif days <= warn_days:
-            warning_certs.append(cert)
-
-    # Summary
     if expired_certs:
-        yield Result(
-            state=State.CRIT,
-            summary=f"{len(expired_certs)} certificates already EXPIRED!",
-        )
+        yield Result(state=State.CRIT, summary="%d certificates already EXPIRED!" % len(expired_certs))
     if critical_certs:
-        worst_cert = critical_certs[0]
+        worst = critical_certs[0]
         yield Result(
             state=State.CRIT,
-            summary=f"{len(critical_certs)} certs expiring critically! Soonest: {worst_cert['common_name']} in {worst_cert['days_until_expire']} days",
+            summary="%d certs expiring critically! Soonest: %s in %d days" % (
+                len(critical_certs), worst["common_name"], worst["days_until_expire"]),
         )
     elif warning_certs:
-        worst_cert = warning_certs[0]
+        worst = warning_certs[0]
         yield Result(
             state=State.WARN,
-            summary=f"{len(warning_certs)} certs expiring soon. Soonest: {worst_cert['common_name']} in {worst_cert['days_until_expire']} days",
+            summary="%d certs expiring soon. Soonest: %s in %d days" % (
+                len(warning_certs), worst["common_name"], worst["days_until_expire"]),
         )
     elif not expired_certs:
-        yield Result(state=State.OK, summary=f"{len(certs)} certificates monitored")
+        yield Result(state=State.OK, summary="%d certificates monitored" % len(certs))
 
-    # Report expired certificates first
-    for cert in expired_certs[:5]:  # Show up to 5 expired certs
-        template = cert['template']
-        template_display = template[:27] + "..." if len(template) > 30 else template
-        # Include full template name if truncated
-        full_template_info = f" (full: {template})" if len(template) > 30 else ""
+    for cert in expired_certs[:5]:
         yield Result(
             state=State.CRIT,
-            notice=f"EXPIRED: {cert['common_name']}: expired {cert['expiration_date']} ({abs(cert['days_until_expire'])} days ago), Template: {template_display}{full_template_info}",
+            notice="EXPIRED: %s: expired %s (%d days ago), Template: %s" % (
+                cert["common_name"], cert["expiration_date"],
+                abs(cert["days_until_expire"]), cert["template"]),
         )
 
-    # List expiring certificates in details with truncation warning
     display_certs = certs_sorted[:max_display]
     if len(certs_sorted) > max_display:
         yield Result(
             state=State.OK,
-            notice=f"Showing {max_display} of {len(certs_sorted)} certificates (increase max_display parameter to see more)",
+            notice="Showing %d of %d certificates" % (max_display, len(certs_sorted)),
         )
 
     for cert in display_certs:
@@ -493,14 +309,11 @@ def check_pki_expiring_certs(
             state = State.WARN
         else:
             state = State.OK
-
-        template = cert['template']
-        template_display = template[:27] + "..." if len(template) > 30 else template
-        # Include full template name if truncated
-        full_template_info = f" (full: {template})" if len(template) > 30 else ""
         yield Result(
             state=state,
-            notice=f"{cert['common_name']}: expires {cert['expiration_date']} ({days} days), Template: {template_display}{full_template_info}",
+            notice="%s: expires %s (%d days), Template: %s" % (
+                cert["common_name"], cert["expiration_date"],
+                days, cert["template"]),
         )
 
 
